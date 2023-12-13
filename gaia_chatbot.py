@@ -45,14 +45,15 @@ def check_password():
 if not check_password():
     st.stop()
 
+key = st.secrets["OPENAIAPIKEY"]
 headers = {
-    "authorization":st.secrets['OPENAI_API_KEY'],
+    "authorization":key,
     "content-type":"application/json"
     }
-openai.api_key = st.secrets["OPENAI_API_KEY"]
+openai.api_key = key
 
 st.title('Gaia chatbot')
-question = st.text_input("Write a question about GAIA: ", key="input")
+question = st.text_input("Write a question about Gaia: ", key="input")
 
 @st.cache_resource
 def load_vectors():
@@ -96,7 +97,7 @@ if question:
             section_info.append('paragraph: '+rd.metadata["paragraph"])
         st.write('   (Section: '+', '.join(section_info)+')')
         st.write(rd.metadata["link"])
-        st.write(rd)
+        #st.write(rd)
         st.write('\n')
     
     
