@@ -1,6 +1,5 @@
 langchain
 streamlit
-langchain_openai
 openai
 sentence-transformers
 faiss-cpu
