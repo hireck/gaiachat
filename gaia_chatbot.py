@@ -1,11 +1,17 @@
-from langchain.chat_models import ChatOpenAI
+#from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
+from langchain.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
 import streamlit as st
 import openai
 import hmac
+from langchain.memory import ConversationBufferMemory
+from langchain.memory import StreamlitChatMessageHistory
+from langchain.chains import LLMChain
+
 
 def check_password():
     """Returns `True` if the user had a correct password."""
@@ -38,22 +44,21 @@ def check_password():
     # Show inputs for username + password.
     login_form()
     if "password_correct" in st.session_state:
-        st.error("ߘ堕ser not known or password incorrect")
+        st.error("user not known or password incorrect")
     return False
 
 
 if not check_password():
     st.stop()
 
-key = st.secrets["OPENAIAPIKEY"]
+apikey = st.secrets["OPENAIAPIKEY"]
 headers = {
-    "authorization":key,
+    "authorization":apikey,
     "content-type":"application/json"
     }
-openai.api_key = key
+openai.api_key = apikey
 
 st.title('Gaia chatbot')
-question = st.text_input("Write a question about Gaia: ", key="input")
 
 @st.cache_resource
 def load_vectors():
@@ -70,35 +75,91 @@ llm = load_llm()
 
 #docs = vectorstore.similarity_search(question,k=5)
 
-template = """Use the following pieces of context to answer the question at the end. Be helpful. Volunteer additional information where relevant, but keep it concise. Don't try to make up answers that are not supported by the context. 
+msgs = StreamlitChatMessageHistory(key="langchain_messages")
+memory = ConversationBufferMemory(chat_memory=msgs)
+if len(msgs.messages) == 0:
+    msgs.add_ai_message("How can I help you?")
+
+template = """You are a Gaia expert at the ESA helpdesk. You task is to help researchers learn about Gaia and use Gaia data products effectively in their work. 
+Use the following pieces of retrieved information to answer the user's question. Be helpful. Volunteer additional information where relevant, but keep it concise. Don't try to make up answers that are not supported by the context. 
+
+Retrieved information:
 {context}
+
+Preceeding conversation:
+{conversation}
+
 Question: {question}
 Helpful Answer:"""
-QA_CHAIN_PROMPT = PromptTemplate.from_template(template)# Run chain
-qa_chain = RetrievalQA.from_chain_type(
-    llm,
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 5}),
-    return_source_documents=True,
-    chain_type_kwargs={"prompt": QA_CHAIN_PROMPT}
-)
+# QA_CHAIN_PROMPT = PromptTemplate.from_template(template)# Run chain
+# qa_chain = RetrievalQA.from_chain_type(
+#     llm,
+#     retriever=vectorstore.as_retriever(search_kwargs={"k": 5}),
+#     return_source_documents=True,
+#     chain_type_kwargs={"prompt": QA_CHAIN_PROMPT},
+#     memory=memory
+# )
 
-if question:
-    result = qa_chain({"query": question})
-    st.write(result["result"])
-    st.write('\n')
-    st.write('Sources:')
-    for num, rd in enumerate(result["source_documents"]):
-        st.write(str(num+1)+') '+str(rd.metadata["title"]))
+#prompt = PromptTemplate(input_variables=["context", "question"], template=template)
+#llm_chain = LLMChain(llm=llm, prompt=prompt, memory=memory)
+
+#prompt = ChatPromptTemplate.from_template(template)
+#chain = prompt | llm
+
+def format_docs(docs):
+    return "\n\n".join(doc.page_content for doc in docs)
+
+
+# rag_chain = (
+#     {"context": retriever | format_docs, "question": RunnablePassthrough()}
+#     | prompt
+#     | llm
+#    # | StrOutputParser()
+# )#
+
+
+for msg in msgs.messages:
+    st.chat_message(msg.type).write(msg.content)
+
+#question = st.text_input("Write a question about Gaia: ", key="input")
+    
+    
+
+def add_sources(docs):
+    
+    lines = []
+    #lines.append('\nSources:')
+    for num, rd in enumerate(docs): #result["source_documents"]):
+        doc_info = []
+        doc_info.append(str(num+1)+') '+str(rd.metadata["title"]))
         section_info = []
         for item in rd.metadata:
             if item.startswith('Header'):
                 section_info.append(rd.metadata[item])
         if rd.metadata.get("paragraph"):
             section_info.append('paragraph: '+rd.metadata["paragraph"])
-        st.write('   (Section: '+', '.join(section_info)+')')
-        st.write(rd.metadata["link"])
-        #st.write(rd)
-        st.write('\n')
+        doc_info.append('   (Section: '+', '.join(section_info)+')')
+        doc_info.append('\n'+rd.metadata["link"])
+        lines.append(''.join(doc_info))
+    text = '\"\"\"'+'\n'.join(lines)+'\"\"\"'
+    return '\n'.join(lines)
+
+if user_input := st.chat_input():
+    docs = vectorstore.similarity_search(user_input,k=5)
+   #context = format_docs(docs)
+    #prompt_value = prompt.invoke({"context":context, "question":question})
+    st.chat_message("human").write(user_input)
+    prev_conv = '\n'.join([msg.type+': '+msg.content for msg in msgs.messages[-2:]])
+    full_prompt = template.format(context=format_docs(docs), question=user_input, conversation=prev_conv)
+    print(full_prompt)
+    result = llm.invoke(full_prompt)
+    with st.chat_message("ai"):
+        st.write(result.content)#+add_sources(docs))
+        expander = st.expander("See sources")
+        expander.write(add_sources(docs))
+    msgs.add_user_message(user_input)
+    msgs.add_ai_message(result.content)
+   
     
     
 # Check the result of the query
