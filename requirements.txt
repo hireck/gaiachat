@@ -3,4 +3,4 @@ streamlit
 openai
 sentence-transformers
 faiss-cpu
-langchain-community
+langchain_openai
