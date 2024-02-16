@@ -11,7 +11,11 @@ import hmac
 from langchain.memory import ConversationBufferMemory
 from langchain.memory import StreamlitChatMessageHistory
 from langchain.chains import LLMChain
+from sentence_transformers import CrossEncoder
 
+cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
+
+#scores = model.predict([["My first", "sentence pair"], ["Second text", "pair"]])
 
 def check_password():
     """Returns `True` if the user had a correct password."""
@@ -61,11 +65,17 @@ openai.api_key = apikey
 st.title('Gaia chatbot')
 
 @st.cache_resource
-def load_vectors():
+def load_vectors_latex():
     embedding_model = HuggingFaceEmbeddings()
     return FAISS.load_local("faiss_index", embedding_model)
 
-vectorstore = load_vectors()
+@st.cache_resource
+def load_vectors_html():
+    embedding_model = HuggingFaceEmbeddings()
+    return FAISS.load_local("faiss_index_html", embedding_model)
+
+vectorstore_latex = load_vectors_latex()
+vectorstore_html = load_vectors_html()
 
 @st.cache_resource
 def load_llm():
@@ -126,7 +136,6 @@ for msg in msgs.messages:
     
 
 def add_sources(docs):
-    
     lines = []
     #lines.append('\nSources:')
     for num, rd in enumerate(docs): #result["source_documents"]):
@@ -145,7 +154,18 @@ def add_sources(docs):
     return '\n'.join(lines)
 
 if user_input := st.chat_input():
-    docs = vectorstore.similarity_search(user_input,k=5)
+    retrieved = vectorstore_latex.similarity_search(user_input,k=25)
+    retrieved_html = vectorstore_html.similarity_search(user_input,k=25)
+    retrieved.extend(retrieved_html)
+    cross_inp = [[user_input, d.page_content] for d in retrieved]
+    cross_scores = cross_encoder.predict(cross_inp)
+    scored = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
+    if scored:
+        reranked = sorted(scored, key=lambda tup: tup[0], reverse=True)
+        docs = [r[1] for r in reranked[:10]]
+    else:
+        reranked = sorted(scored, key=lambda tup: tup[0]) #if there are no positive score, take the 3 least negative ones
+        docs = [r[1] for r in reranked[:3]]
    #context = format_docs(docs)
     #prompt_value = prompt.invoke({"context":context, "question":question})
     st.chat_message("human").write(user_input)
