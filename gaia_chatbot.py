@@ -3,8 +3,8 @@ from langchain_openai import ChatOpenAI
 #from langchain.chains import RetrievalQA
 #from langchain.prompts import PromptTemplate
 #from langchain.prompts import ChatPromptTemplate
-from langchain.vectorstores import FAISS
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain_community.embeddings import HuggingFaceEmbeddings
 import streamlit as st
 import openai
 import hmac
@@ -64,18 +64,25 @@ openai.api_key = apikey
 
 st.title('Gaia chatbot')
 
-@st.cache_resource
-def load_vectors_latex():
-    embedding_model = HuggingFaceEmbeddings()
-    return FAISS.load_local("faiss_index", embedding_model)
+# @st.cache_resource
+# def load_vectors_latex():
+#     embedding_model = HuggingFaceEmbeddings()
+#     return FAISS.load_local("faiss_index", embedding_model)
+
+# @st.cache_resource
+# def load_vectors_html():
+#     embedding_model = HuggingFaceEmbeddings()
+#     return FAISS.load_local("faiss_index_html", embedding_model)
+
+#vectorstore_latex = load_vectors_latex()
+#vectorstore_html = load_vectors_html()
 
 @st.cache_resource
-def load_vectors_html():
+def load_vectors():
     embedding_model = HuggingFaceEmbeddings()
-    return FAISS.load_local("faiss_index_html", embedding_model)
+    return FAISS.load_local("faiss_index_combined", embedding_model)
 
-vectorstore_latex = load_vectors_latex()
-vectorstore_html = load_vectors_html()
+vectorstore = load_vectors()
 
 @st.cache_resource
 def load_llm():
@@ -155,9 +162,10 @@ def add_sources(docs):
 
 if user_input := st.chat_input():
     st.chat_message("human").write(user_input)
-    retrieved = vectorstore_latex.similarity_search(user_input,k=15)
-    retrieved_html = vectorstore_html.similarity_search(user_input,k=15)
-    retrieved.extend(retrieved_html)
+    #retrieved = vectorstore_latex.similarity_search(user_input,k=15)
+    #retrieved_html = vectorstore_html.similarity_search(user_input,k=15)
+    #retrieved.extend(retrieved_html)
+    retrieved = vectorstore.similarity_search(user_input,k=25)
     cross_inp = [[user_input, d.page_content] for d in retrieved]
     cross_scores = cross_encoder.predict(cross_inp)
     scored = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
