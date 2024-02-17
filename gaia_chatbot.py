@@ -1,8 +1,8 @@
 #from langchain.chat_models import ChatOpenAI
 from langchain_openai import ChatOpenAI
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
-from langchain.prompts import ChatPromptTemplate
+#from langchain.chains import RetrievalQA
+#from langchain.prompts import PromptTemplate
+#from langchain.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
 from langchain.embeddings import HuggingFaceEmbeddings
 import streamlit as st
@@ -10,7 +10,7 @@ import openai
 import hmac
 from langchain.memory import ConversationBufferMemory
 from langchain.memory import StreamlitChatMessageHistory
-from langchain.chains import LLMChain
+#from langchain.chains import LLMChain
 from sentence_transformers import CrossEncoder
 
 cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
@@ -154,21 +154,21 @@ def add_sources(docs):
     return '\n'.join(lines)
 
 if user_input := st.chat_input():
-    retrieved = vectorstore_latex.similarity_search(user_input,k=25)
-    retrieved_html = vectorstore_html.similarity_search(user_input,k=25)
+    st.chat_message("human").write(user_input)
+    retrieved = vectorstore_latex.similarity_search(user_input,k=15)
+    retrieved_html = vectorstore_html.similarity_search(user_input,k=15)
     retrieved.extend(retrieved_html)
     cross_inp = [[user_input, d.page_content] for d in retrieved]
     cross_scores = cross_encoder.predict(cross_inp)
     scored = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
     if scored:
         reranked = sorted(scored, key=lambda tup: tup[0], reverse=True)
-        docs = [r[1] for r in reranked[:10]]
+        docs = [r[1] for r in reranked[:7]]
     else:
-        reranked = sorted(scored, key=lambda tup: tup[0]) #if there are no positive score, take the 3 least negative ones
-        docs = [r[1] for r in reranked[:3]]
+        reranked = sorted(scored, key=lambda tup: tup[0]) #if there are no positive score, take the 2 least negative ones
+        docs = [r[1] for r in reranked[:2]]
    #context = format_docs(docs)
     #prompt_value = prompt.invoke({"context":context, "question":question})
-    st.chat_message("human").write(user_input)
     prev_conv = '\n'.join([msg.type+': '+msg.content for msg in msgs.messages[-2:]])
     full_prompt = template.format(context=format_docs(docs), question=user_input, conversation=prev_conv)
     print(full_prompt)
