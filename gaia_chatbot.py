@@ -173,7 +173,7 @@ if user_input := st.chat_input():
         reranked = sorted(scored, key=lambda tup: tup[0], reverse=True)
         docs = [r[1] for r in reranked[:7]]
     else:
-        reranked = sorted(scored, key=lambda tup: tup[0]) #if there are no positive score, take the 2 least negative ones
+        reranked = sorted(scored, key=lambda tup: tup[0], reverse=True) #if there are no positive score, take the 2 least negative ones
         docs = [r[1] for r in reranked[:2]]
    #context = format_docs(docs)
     #prompt_value = prompt.invoke({"context":context, "question":question})
