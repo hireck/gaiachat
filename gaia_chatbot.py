@@ -77,10 +77,11 @@ st.title('Gaia chatbot')
 #vectorstore_latex = load_vectors_latex()
 #vectorstore_html = load_vectors_html()
 
+
 @st.cache_resource
 def load_vectors():
     embedding_model = HuggingFaceEmbeddings()
-    return FAISS.load_local("faiss_index_combined", embedding_model)
+    return FAISS.load_local("faiss_index_combined", embedding_model, allow_dangerous_deserialization=True)
 
 vectorstore = load_vectors()
 
