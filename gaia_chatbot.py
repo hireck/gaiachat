@@ -13,6 +13,7 @@ from langchain.memory import StreamlitChatMessageHistory
 #from langchain.chains import LLMChain
 from sentence_transformers import CrossEncoder
 
+
 cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 #scores = model.predict([["My first", "sentence pair"], ["Second text", "pair"]])
@@ -86,9 +87,17 @@ def load_vectors():
 vectorstore = load_vectors()
 
 @st.cache_resource
-def load_llm():
+def load_gpt3_5():
+    #return ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0)
+    return ChatOpenAI(model_name="gpt-3.5-turbo-1106", temperature=0)
+
+@st.cache_resource
+def load_gpt4():
     return ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0)
-llm = load_llm()
+    
+    
+gpt3_5 = load_gpt3_5()
+gpt4 = load_gpt4()
 #question = 'Where is the GAIA spacecraft?'
 
 #docs = vectorstore.similarity_search(question,k=5)
@@ -98,8 +107,9 @@ memory = ConversationBufferMemory(chat_memory=msgs)
 if len(msgs.messages) == 0:
     msgs.add_ai_message("How can I help you?")
 
-template = """You are a Gaia expert at the ESA helpdesk. You task is to help researchers learn about Gaia and use Gaia data products effectively in their work. 
-Use the following pieces of retrieved information to answer the user's question. Be helpful. Volunteer additional information where relevant, but keep it concise. Don't try to make up answers that are not supported by the context. 
+template = """You are a Gaia expert at the ESA helpdesk. Your task is to help researchers learn about Gaia and use Gaia data products effectively in their work. 
+Use the following pieces of retrieved information to answer the user's question. Be helpful. Volunteer additional information where relevant, but keep it concise. Don't try to make up answers that are not supported by the retrieved information. 
+Include references in your answer to the documents you used, to indicated where the information comes from. The documents are numbered. Use those numbers to refer to them.
 
 Retrieved information:
 {context}
@@ -109,6 +119,18 @@ Preceeding conversation:
 
 Question: {question}
 Helpful Answer:"""
+
+contextualizing_template = """ Given a chat history and the latest user question which might reference context in the chat history, formulate a standalone question which can be understood without the chat history. 
+Do NOT answer the question, just reformulate it if needed and otherwise return it as is.
+
+Chat history:
+{history}
+
+Latest user question:
+{question}
+
+Standalone version of the question:
+"""
 # QA_CHAIN_PROMPT = PromptTemplate.from_template(template)# Run chain
 # qa_chain = RetrievalQA.from_chain_type(
 #     llm,
@@ -124,8 +146,10 @@ Helpful Answer:"""
 #prompt = ChatPromptTemplate.from_template(template)
 #chain = prompt | llm
 
+
+
 def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
+    return"\n\n".join( str(num+1)+') '+doc.page_content for num, doc in enumerate(docs))
 
 
 # rag_chain = (
@@ -161,12 +185,28 @@ def add_sources(docs):
     text = '\"\"\"'+'\n'.join(lines)+'\"\"\"'
     return '\n'.join(lines)
 
+def contains_referring(query):
+    words = [t.strip(',.:;?!\"\'') for t in query.split()]
+    for w in words:
+        if w.lower() in ['the', 'it', 'its', "it's", 'they', 'their', "they're", 'this', 'that' 'these', 'those', 'point', 'item', 'my']:
+            return True
+        if w.isdigit():
+            return True
+
 if user_input := st.chat_input():
     st.chat_message("human").write(user_input)
     #retrieved = vectorstore_latex.similarity_search(user_input,k=15)
     #retrieved_html = vectorstore_html.similarity_search(user_input,k=15)
     #retrieved.extend(retrieved_html)
-    retrieved = vectorstore.similarity_search(user_input,k=25)
+    prev_conv = '\n'.join([msg.type+': '+msg.content for msg in msgs.messages[-2:]])
+    if len(msgs.messages) > 1 and contains_referring(user_input):
+        contextualizing_prompt = contextualizing_template.format(history=prev_conv, question=user_input)
+        print(contextualizing_prompt)
+        contextualized_result = gpt3_5.invoke(contextualizing_prompt)
+        vector_query = contextualized_result.content
+        print(vector_query)
+    else: vector_query = user_input
+    retrieved = vectorstore.similarity_search(vector_query,k=20)
     cross_inp = [[user_input, d.page_content] for d in retrieved]
     cross_scores = cross_encoder.predict(cross_inp)
     scored = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
@@ -178,10 +218,9 @@ if user_input := st.chat_input():
         docs = [r[1] for r in reranked[:2]]
    #context = format_docs(docs)
     #prompt_value = prompt.invoke({"context":context, "question":question})
-    prev_conv = '\n'.join([msg.type+': '+msg.content for msg in msgs.messages[-2:]])
     full_prompt = template.format(context=format_docs(docs), question=user_input, conversation=prev_conv)
     print(full_prompt)
-    result = llm.invoke(full_prompt)
+    result = gpt4.invoke(full_prompt)
     with st.chat_message("ai"):
         st.write(result.content)#+add_sources(docs))
         expander = st.expander("See sources")
