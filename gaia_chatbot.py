@@ -12,6 +12,7 @@ from langchain.memory import ConversationBufferMemory
 from langchain.memory import StreamlitChatMessageHistory
 #from langchain.chains import LLMChain
 from sentence_transformers import CrossEncoder
+from langchain_core.messages.base import BaseMessage
 
 
 cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
@@ -63,20 +64,9 @@ headers = {
     }
 openai.api_key = apikey
 
+
+
 st.title('Gaia chatbot')
-
-# @st.cache_resource
-# def load_vectors_latex():
-#     embedding_model = HuggingFaceEmbeddings()
-#     return FAISS.load_local("faiss_index", embedding_model)
-
-# @st.cache_resource
-# def load_vectors_html():
-#     embedding_model = HuggingFaceEmbeddings()
-#     return FAISS.load_local("faiss_index_html", embedding_model)
-
-#vectorstore_latex = load_vectors_latex()
-#vectorstore_html = load_vectors_html()
 
 
 @st.cache_resource
@@ -103,9 +93,14 @@ gpt4 = load_gpt4()
 #docs = vectorstore.similarity_search(question,k=5)
 
 msgs = StreamlitChatMessageHistory(key="langchain_messages")
-memory = ConversationBufferMemory(chat_memory=msgs)
+#memory = ConversationBufferMemory(chat_memory=msgs)
+#message_history = []
+
+
 if len(msgs.messages) == 0:
-    msgs.add_ai_message("How can I help you?")
+    new_msg = BaseMessage(type='ai', content="How can I help you?")
+    msgs.add_message(new_msg)
+    #msgs.add_ai_message("How can I help you?")
 
 template = """You are a Gaia expert at the ESA helpdesk. Your task is to help researchers learn about Gaia and use Gaia data products effectively in their work. 
 Use the following pieces of retrieved information to answer the user's question. Be helpful. Volunteer additional information where relevant, but keep it concise. Don't try to make up answers that are not supported by the retrieved information. 
@@ -161,7 +156,13 @@ def format_docs(docs):
 
 
 for msg in msgs.messages:
-    st.chat_message(msg.type).write(msg.content)
+    if msg.type == "ai" and hasattr(msg, "sources"):
+        with st.chat_message("ai"):
+            st.write(msg.content)
+            expander = st.expander("See sources")
+            expander.write(msg.sources)
+    else:
+        st.chat_message(msg.type).write(msg.content)
 
 #question = st.text_input("Write a question about Gaia: ", key="input")
     
@@ -182,22 +183,19 @@ def add_sources(docs):
         doc_info.append('   (Section: '+', '.join(section_info)+')')
         doc_info.append('\n'+rd.metadata["link"])
         lines.append(''.join(doc_info))
-    text = '\"\"\"'+'\n'.join(lines)+'\"\"\"'
+    #text = '\"\"\"'+'\n'.join(lines)+'\"\"\"'
     return '\n'.join(lines)
 
 def contains_referring(query):
     words = [t.strip(',.:;?!\"\'') for t in query.split()]
     for w in words:
-        if w.lower() in ['the', 'it', 'its', "it's", 'they', 'their', "they're", 'this', 'that' 'these', 'those', 'point', 'item', 'my']:
+        if w.lower() in ['the', 'it', 'its', "it's", 'they', 'their', "they're", 'this', 'that' 'these', 'those', 'point', 'item', 'my', 'such', 'here', 'there', 'more', 'most', 'teh']:
             return True
         if w.isdigit():
             return True
 
 if user_input := st.chat_input():
     st.chat_message("human").write(user_input)
-    #retrieved = vectorstore_latex.similarity_search(user_input,k=15)
-    #retrieved_html = vectorstore_html.similarity_search(user_input,k=15)
-    #retrieved.extend(retrieved_html)
     prev_conv = '\n'.join([msg.type+': '+msg.content for msg in msgs.messages[-2:]])
     if len(msgs.messages) > 1 and contains_referring(user_input):
         contextualizing_prompt = contextualizing_template.format(history=prev_conv, question=user_input)
@@ -207,7 +205,7 @@ if user_input := st.chat_input():
         print(vector_query)
     else: vector_query = user_input
     retrieved = vectorstore.similarity_search(vector_query,k=20)
-    cross_inp = [[user_input, d.page_content] for d in retrieved]
+    cross_inp = [[vector_query, d.page_content] for d in retrieved]
     cross_scores = cross_encoder.predict(cross_inp)
     scored = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
     if scored:
@@ -216,17 +214,20 @@ if user_input := st.chat_input():
     else:
         reranked = sorted(scored, key=lambda tup: tup[0], reverse=True) #if there are no positive score, take the 2 least negative ones
         docs = [r[1] for r in reranked[:2]]
-   #context = format_docs(docs)
-    #prompt_value = prompt.invoke({"context":context, "question":question})
     full_prompt = template.format(context=format_docs(docs), question=user_input, conversation=prev_conv)
     print(full_prompt)
     result = gpt4.invoke(full_prompt)
+    sources = add_sources(docs)
+    user_msg = BaseMessage(type="human", content=user_input)
+    msgs.add_message(user_msg)
     with st.chat_message("ai"):
         st.write(result.content)#+add_sources(docs))
         expander = st.expander("See sources")
-        expander.write(add_sources(docs))
-    msgs.add_user_message(user_input)
-    msgs.add_ai_message(result.content)
+        expander.write(sources) 
+    ai_msg = BaseMessage(type="ai", content=result.content)
+    setattr(ai_msg, 'sources', sources)
+    msgs.add_message(ai_msg)    
+    
    
     
     
