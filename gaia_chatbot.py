@@ -13,49 +13,49 @@ from langchain.memory import StreamlitChatMessageHistory
 #from langchain.chains import LLMChain
 from sentence_transformers import CrossEncoder
 from langchain_core.messages.base import BaseMessage
-
+#from sentence_transformers import SentenceTransformer
 
 cross_encoder = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')
 
 #scores = model.predict([["My first", "sentence pair"], ["Second text", "pair"]])
 
-def check_password():
-    """Returns `True` if the user had a correct password."""
+# def check_password():
+#     """Returns `True` if the user had a correct password."""
 
-    def login_form():
-        """Form with widgets to collect user information"""
-        with st.form("Credentials"):
-            st.text_input("Username", key="username")
-            st.text_input("Password", type="password", key="password")
-            st.form_submit_button("Log in", on_click=password_entered)
+#     def login_form():
+#         """Form with widgets to collect user information"""
+#         with st.form("Credentials"):
+#             st.text_input("Username", key="username")
+#             st.text_input("Password", type="password", key="password")
+#             st.form_submit_button("Log in", on_click=password_entered)
 
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if st.session_state["username"] in st.secrets[
-            "passwords"
-        ] and hmac.compare_digest(
-            st.session_state["password"],
-            st.secrets.passwords[st.session_state["username"]],
-        ):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the username or password.
-            del st.session_state["username"]
-        else:
-            st.session_state["password_correct"] = False
+#     def password_entered():
+#         """Checks whether a password entered by the user is correct."""
+#         if st.session_state["username"] in st.secrets[
+#             "passwords"
+#         ] and hmac.compare_digest(
+#             st.session_state["password"],
+#             st.secrets.passwords[st.session_state["username"]],
+#         ):
+#             st.session_state["password_correct"] = True
+#             del st.session_state["password"]  # Don't store the username or password.
+#             del st.session_state["username"]
+#         else:
+#             st.session_state["password_correct"] = False
 
-    # Return True if the username + password is validated.
-    if st.session_state.get("password_correct", False):
-        return True
+#     # Return True if the username + password is validated.
+#     if st.session_state.get("password_correct", False):
+#         return True
 
-    # Show inputs for username + password.
-    login_form()
-    if "password_correct" in st.session_state:
-        st.error("user not known or password incorrect")
-    return False
+#     # Show inputs for username + password.
+#     login_form()
+#     if "password_correct" in st.session_state:
+#         st.error("user not known or password incorrect")
+#     return False
 
 
-if not check_password():
-    st.stop()
+# if not check_password():
+#     st.stop()
 
 apikey = st.secrets["OPENAIAPIKEY"]
 headers = {
@@ -71,7 +71,9 @@ st.title('Gaia chatbot')
 
 @st.cache_data
 def load_vectors():
-    embedding_model = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    embedding_model = HuggingFaceEmbeddings(model_name="thenlper/gte-large", encode_kwargs={"normalize_embeddings": True},)#"msmarco-bert-base-dot-v5")
+    #embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+    #embedmodel.max_seq_length = 512
     return FAISS.load_local("faiss_index_combined", embedding_model, allow_dangerous_deserialization=True)
 
 vectorstore = load_vectors()
@@ -79,11 +81,11 @@ vectorstore = load_vectors()
 @st.cache_resource
 def load_gpt3_5():
     #return ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0)
-    return ChatOpenAI(model_name="gpt-3.5-turbo-1106", temperature=0)
+    return ChatOpenAI(model_name="gpt-3.5-turbo-0125", temperature=0)
 
 @st.cache_resource
 def load_gpt4():
-    return ChatOpenAI(model_name="gpt-4-1106-preview", temperature=0)
+    return ChatOpenAI(model_name="gpt-4o", temperature=0)
     
     
 gpt3_5 = load_gpt3_5()
@@ -195,6 +197,7 @@ def contains_referring(query):
             return True
 
 if user_input := st.chat_input():
+    print(user_input)
     st.chat_message("human").write(user_input)
     prev_conv = '\n'.join([msg.type+': '+msg.content for msg in msgs.messages[-2:]])
     if len(msgs.messages) > 1 and contains_referring(user_input):
@@ -207,12 +210,13 @@ if user_input := st.chat_input():
     retrieved = vectorstore.similarity_search(vector_query,k=20)
     cross_inp = [[vector_query, d.page_content] for d in retrieved]
     cross_scores = cross_encoder.predict(cross_inp)
-    scored = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
-    if scored:
-        reranked = sorted(scored, key=lambda tup: tup[0], reverse=True)
+    scored_pos = [(score, d) for score, d in zip(cross_scores, retrieved) if score > 0]
+    if scored_pos:
+        reranked = sorted(scored_pos, key=lambda tup: tup[0], reverse=True)
         docs = [r[1] for r in reranked[:7]]
     else:
-        reranked = sorted(scored, key=lambda tup: tup[0], reverse=True) #if there are no positive score, take the 2 least negative ones
+        scored_neg = [(score, d) for score, d in zip(cross_scores, retrieved)]
+        reranked = sorted(scored_neg, key=lambda tup: tup[0], reverse=True) #if there are no positive score, take the 2 least negative ones
         docs = [r[1] for r in reranked[:2]]
     full_prompt = template.format(context=format_docs(docs), question=user_input, conversation=prev_conv)
     print(full_prompt)
