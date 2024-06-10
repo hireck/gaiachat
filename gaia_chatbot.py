@@ -71,7 +71,7 @@ st.title('Gaia chatbot')
 
 @st.cache_data
 def load_vectors():
-    embedding_model =  HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L12-v2", encode_kwargs={"normalize_embeddings": True},)
+    embedding_model =  HuggingFaceEmbeddings()#model_name="sentence-transformers/all-MiniLM-L12-v2")#, encode_kwargs={"normalize_embeddings": True},)
     #embedding_model = HuggingFaceEmbeddings(model_name="thenlper/gte-large", encode_kwargs={"normalize_embeddings": True},)#"msmarco-bert-base-dot-v5")
     #embedding_model =  HuggingFaceEmbeddings(model_name="thenlper/gte-large", encode_kwargs={"normalize_embeddings": True}SentenceTransformer('all-MiniLM-L6-v2')
     #embedmodel.max_seq_length = 512
