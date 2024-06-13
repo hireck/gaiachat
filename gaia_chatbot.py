@@ -69,7 +69,7 @@ openai.api_key = apikey
 st.title('Gaia chatbot')
 
 
-@st.cache_data
+@st.cache_resource
 def load_vectors():
     embedding_model =  HuggingFaceEmbeddings()#model_name="sentence-transformers/all-MiniLM-L12-v2")#, encode_kwargs={"normalize_embeddings": True},)
     #embedding_model = HuggingFaceEmbeddings(model_name="thenlper/gte-large", encode_kwargs={"normalize_embeddings": True},)#"msmarco-bert-base-dot-v5")
